@@ -37,47 +37,85 @@ public enum Discovery {
         return "\(m)m"
     }
 
-    // MARK: - Process working directory
+    // MARK: - Batched process lookups
 
-    /// The current working directory of a pid, via `lsof`.
-    static func cwd(ofPid pid: Int) -> String? {
-        let out = Shell.run(lsof, ["-a", "-d", "cwd", "-p", "\(pid)", "-Fn"])
-        for line in out.split(separator: "\n") where line.hasPrefix("n") {
-            return String(line.dropFirst())
+    /// Working directories for many pids in a single `lsof` call. Spawning lsof
+    /// once per pid is the dominant cost, so batch it: one call, field-parsed.
+    static func cwds(ofPids pids: [Int]) -> [Int: String] {
+        guard !pids.isEmpty else { return [:] }
+        let list = pids.map(String.init).joined(separator: ",")
+        let out = Shell.run(lsof, ["-a", "-d", "cwd", "-p", list, "-Fpn"])
+        var map: [Int: String] = [:]
+        var current: Int?
+        for line in out.split(separator: "\n") {
+            if line.hasPrefix("p") { current = Int(line.dropFirst()) }
+            else if line.hasPrefix("n"), let pid = current { map[pid] = String(line.dropFirst()) }
         }
-        return nil
+        return map
+    }
+
+    /// Elapsed seconds for many pids in a single `ps` call.
+    static func etimes(ofPids pids: [Int]) -> [Int: Int] {
+        guard !pids.isEmpty else { return [:] }
+        let out = Shell.run(ps, ["-o", "pid=,etime=", "-p", pids.map(String.init).joined(separator: ",")])
+        var map: [Int: Int] = [:]
+        for line in out.split(separator: "\n") {
+            let cols = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard cols.count >= 2, let pid = Int(cols[0]) else { continue }
+            map[pid] = parseEtime(cols[1])
+        }
+        return map
     }
 
     // MARK: - Live agents
 
     /// Every running claude/codex process, mapped to its folder, uptime and RAM.
     public static func liveAgents() -> [LiveAgent] {
+        struct Cand { let pid: Int; let kind: AgentKind; let etime: String; let rssKB: Int }
         let out = Shell.run(ps, ["-axo", "pid=,etime=,rss=,comm="])
-        var agents: [LiveAgent] = []
+        var cands: [Cand] = []
         for line in out.split(separator: "\n") {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
             guard cols.count >= 4, let pid = Int(cols[0]) else { continue }
-            let etime = cols[1]
-            let rssKB = Int(cols[2]) ?? 0
             // comm can be a path (and paths can contain spaces): rejoin the tail.
-            let comm = cols[3...].joined(separator: " ")
-            let base = (comm as NSString).lastPathComponent
-
+            let base = (cols[3...].joined(separator: " ") as NSString).lastPathComponent
             let kind: AgentKind
             switch base {
             case "claude": kind = .claude
             case "codex":  kind = .codex
             default: continue
             }
-            guard let folder = cwd(ofPid: pid) else { continue }
-
-            let secs = parseEtime(etime)
+            cands.append(Cand(pid: pid, kind: kind, etime: cols[1], rssKB: Int(cols[2]) ?? 0))
+        }
+        let folders = cwds(ofPids: cands.map { $0.pid })
+        var agents: [LiveAgent] = []
+        for c in cands {
+            guard let folder = folders[c.pid] else { continue }
+            let secs = parseEtime(c.etime)
             agents.append(LiveAgent(
-                pid: pid, kind: kind, folder: folder,
+                pid: c.pid, kind: c.kind, folder: folder,
                 uptimeSeconds: secs, uptimeText: humanUptime(secs),
-                rssMB: rssKB / 1024))
+                rssMB: c.rssKB / 1024))
         }
         return agents.sorted { $0.rssMB > $1.rssMB }
+    }
+
+    // MARK: - Open shells (proxy for "a terminal is open here")
+
+    private static let shellNames: Set<String> = ["zsh", "bash", "fish", "sh", "nu"]
+
+    /// Folders that currently have an interactive shell sitting in them. Used to
+    /// tell a "warm" session (terminal open, agent exited) from a "cold" one.
+    public static func shellFolders() -> Set<String> {
+        let out = Shell.run(ps, ["-axo", "pid=,comm="])
+        var pids: [Int] = []
+        for line in out.split(separator: "\n") {
+            let cols = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard cols.count >= 2, let pid = Int(cols[0]) else { continue }
+            let base = (cols[1...].joined(separator: " ") as NSString).lastPathComponent
+            if shellNames.contains(base) { pids.append(pid) }
+        }
+        return Set(cwds(ofPids: pids).values)
     }
 
     // MARK: - Dev servers
@@ -86,8 +124,9 @@ public enum Discovery {
 
     /// Listening node-family dev servers with port, uptime and folder.
     public static func devServers() -> [DevServer] {
+        struct Cand { let pid: Int; let command: String; let port: Int }
         let out = Shell.run(lsof, ["-iTCP", "-sTCP:LISTEN", "-nP"])
-        var servers: [DevServer] = []
+        var cands: [Cand] = []
         var seen = Set<Int>()
         for line in out.split(separator: "\n") {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
@@ -99,15 +138,16 @@ public enum Discovery {
             let addr = cols[8]                     // e.g. *:5173, 127.0.0.1:3000, [::1]:3000
             guard let portStr = addr.split(separator: ":").last, let port = Int(portStr) else { continue }
             seen.insert(pid)
-
-            let etime = Shell.run(ps, ["-o", "etime=", "-p", "\(pid)"])
-            let secs = parseEtime(etime)
-            let folder = cwd(ofPid: pid) ?? "?"
-            servers.append(DevServer(
-                pid: pid, command: command, port: port,
-                uptimeSeconds: secs, uptimeText: humanUptime(secs), folder: folder))
+            cands.append(Cand(pid: pid, command: command, port: port))
         }
-        return servers.sorted { $0.port < $1.port }
+        let folders = cwds(ofPids: cands.map { $0.pid })
+        let ages = etimes(ofPids: cands.map { $0.pid })
+        return cands.map { c in
+            let secs = ages[c.pid] ?? 0
+            return DevServer(pid: c.pid, command: c.command, port: c.port,
+                             uptimeSeconds: secs, uptimeText: humanUptime(secs),
+                             folder: folders[c.pid] ?? "?")
+        }.sorted { $0.port < $1.port }
     }
 
     // MARK: - Actions

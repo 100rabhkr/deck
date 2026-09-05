@@ -45,6 +45,33 @@ public struct LiveAgent: Codable, Sendable, Identifiable {
     public var folderName: String { (folder as NSString).lastPathComponent }
 }
 
+/// A project folder that has saved Claude/Codex sessions on disk, whether or not
+/// an agent is running there now. This is the row a home-screen card renders.
+public struct HistoryEntry: Codable, Sendable, Identifiable {
+    public var id: String { folder }
+    public let folder: String
+    public let kinds: [AgentKind]
+    public let sessionCount: Int
+    public let lastActivity: Date
+    public let status: SessionStatus
+    public var summary: String?
+    public var summarySource: String?    // "brain", "git", ... or nil
+
+    public init(folder: String, kinds: [AgentKind], sessionCount: Int,
+                lastActivity: Date, status: SessionStatus,
+                summary: String? = nil, summarySource: String? = nil) {
+        self.folder = folder
+        self.kinds = kinds
+        self.sessionCount = sessionCount
+        self.lastActivity = lastActivity
+        self.status = status
+        self.summary = summary
+        self.summarySource = summarySource
+    }
+
+    public var folderName: String { (folder as NSString).lastPathComponent }
+}
+
 /// A listening dev server (node/vite/next/etc.) with its port and how long it
 /// has been alive. Orphaned ones are a classic slow RAM leak.
 public struct DevServer: Codable, Sendable, Identifiable {
