@@ -13,11 +13,22 @@ struct ContentView: View {
                 sessionSection("Live", .live)
                 sessionSection("Warm", .warm)
                 sessionSection("Cold", .cold)
+                serverSection
             }
             .listStyle(.sidebar)
             .navigationTitle("Deck")
             .frame(minWidth: 260)
             .toolbar {
+                if model.idleCount > 0 {
+                    ToolbarItem {
+                        Button {
+                            Task { await model.sleepAllIdle() }
+                        } label: {
+                            Label("Sleep \(model.idleCount) idle", systemImage: "moon.zzz")
+                        }
+                        .help("Stop all idle agents to reclaim RAM (resumable later)")
+                    }
+                }
                 ToolbarItem {
                     Button {
                         Task { await model.refresh() }
@@ -25,7 +36,7 @@ struct ContentView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .disabled(model.loading)
-                    .help("Refresh sessions")
+                    .help("Refresh now")
                 }
             }
         } detail: {
@@ -42,7 +53,10 @@ struct ContentView: View {
             let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
             terminals.open(folder: folder, kinds: kinds)
         }
-        .task { await model.refresh() }
+        .task {
+            await model.refresh()
+            model.startAutoRefresh()
+        }
     }
 
     @ViewBuilder
@@ -91,6 +105,39 @@ struct ContentView: View {
             ForEach(items) { entry in
                 SessionRow(entry: entry, isOpen: terminals.isOpen(entry.folder))
                     .tag(entry.folder)
+                    .contextMenu {
+                        if entry.status == .live {
+                            Button("Sleep (reclaim RAM)") {
+                                Task { await model.sleepSession(folder: entry.folder) }
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var serverSection: some View {
+        if !model.servers.isEmpty {
+            Section("Dev servers (\(model.servers.count))") {
+                ForEach(model.servers) { server in
+                    HStack(spacing: 8) {
+                        Image(systemName: "server.rack").foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(server.command) :\(server.port)").lineLimit(1)
+                            Text("\(server.folderName) · up \(server.uptimeText)")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Button {
+                            Task { await model.killServer(server) }
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Kill this server")
+                    }
+                }
             }
         }
     }
@@ -111,7 +158,6 @@ struct SessionRow: View {
             Spacer()
             if isOpen {
                 Image(systemName: "circle.fill").font(.system(size: 5)).foregroundStyle(.tertiary)
-                    .help("Open in a tab")
             }
         }
         .padding(.vertical, 1)

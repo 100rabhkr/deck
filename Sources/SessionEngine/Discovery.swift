@@ -39,17 +39,26 @@ public enum Discovery {
 
     // MARK: - Batched process lookups
 
-    /// Working directories for many pids in a single `lsof` call. Spawning lsof
-    /// once per pid is the dominant cost, so batch it: one call, field-parsed.
+    /// Working directory of a pid via libproc (`proc_pidinfo`). No subprocess,
+    /// microseconds instead of an `lsof` spawn, which is what makes polling the
+    /// whole session list on a timer cheap. Works for the caller's own processes
+    /// without elevation.
+    static func procCwd(_ pid: Int32) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        let ret = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size)
+        guard ret == size else { return nil }
+        return withUnsafeBytes(of: &info.pvi_cdir.vip_path) { raw in
+            guard let base = raw.baseAddress else { return nil }
+            return String(cString: base.assumingMemoryBound(to: CChar.self))
+        }
+    }
+
+    /// Working directories for many pids, resolved natively.
     static func cwds(ofPids pids: [Int]) -> [Int: String] {
-        guard !pids.isEmpty else { return [:] }
-        let list = pids.map(String.init).joined(separator: ",")
-        let out = Shell.run(lsof, ["-a", "-d", "cwd", "-p", list, "-Fpn"])
         var map: [Int: String] = [:]
-        var current: Int?
-        for line in out.split(separator: "\n") {
-            if line.hasPrefix("p") { current = Int(line.dropFirst()) }
-            else if line.hasPrefix("n"), let pid = current { map[pid] = String(line.dropFirst()) }
+        for pid in pids {
+            if let cwd = procCwd(Int32(pid)) { map[pid] = cwd }
         }
         return map
     }
@@ -158,6 +167,13 @@ public enum Discovery {
     @discardableResult
     public static func sleepAgent(pid: Int) -> Bool {
         guard liveAgents().contains(where: { $0.pid == pid }) else { return false }
+        return kill(pid_t(pid), SIGTERM) == 0
+    }
+
+    /// Stop a dev server. Refuses any pid that is not currently a tracked server.
+    @discardableResult
+    public static func stopServer(pid: Int) -> Bool {
+        guard devServers().contains(where: { $0.pid == pid }) else { return false }
         return kill(pid_t(pid), SIGTERM) == 0
     }
 }
