@@ -16,7 +16,7 @@ struct HelmApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {
-        WindowGroup("Helm") {
+        WindowGroup("Deck") {
             ContentView()
         }
         .defaultSize(width: 1120, height: 700)
