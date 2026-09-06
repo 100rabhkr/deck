@@ -62,6 +62,17 @@ struct ContentView: View {
                 }
                 .padding(8)
                 Divider()
+                if terminals.noAccess.contains(folder) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                        Text("No access to this folder (macOS privacy). Grant your terminal Full Disk Access in Privacy & Security, then reopen. Opened your home folder instead.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(Color.yellow.opacity(0.12))
+                    Divider()
+                }
                 TerminiTerminalView(controller: controller, appearance: .default)
                     .id(folder)
             }

@@ -11,6 +11,8 @@ import SessionEngine
 final class TerminalManager: ObservableObject {
     /// Open terminals, in tab order.
     @Published private(set) var openOrder: [String] = []
+    /// Folders we could not read (usually macOS privacy/TCC), opened in home instead.
+    @Published private(set) var noAccess: Set<String> = []
     private var workspaces: [String: TerminiLocalPTYWorkspace] = [:]
 
     func open(folder: String, kinds: [AgentKind]) {
@@ -38,18 +40,22 @@ final class TerminalManager: ObservableObject {
 
     private func makeWorkspace(folder: String, kinds: [AgentKind]) -> TerminiLocalPTYWorkspace {
         let fm = FileManager.default
-        let dir = fm.fileExists(atPath: folder)
-            ? URL(fileURLWithPath: folder)
-            : fm.homeDirectoryForCurrentUser
+        // Must be readable, not just present. A TCC-blocked folder "exists" but
+        // returns EPERM, which would leave the shell in an unreadable cwd and
+        // make tools like brew fail on startup. Fall back to home in that case.
+        let readable = fm.isReadableFile(atPath: folder)
+        if readable { noAccess.remove(folder) } else { noAccess.insert(folder) }
+        let dir = readable ? URL(fileURLWithPath: folder) : fm.homeDirectoryForCurrentUser
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
         let arguments: [String]
-        if let cmd = resumeCommand(for: kinds) {
+        if readable, let cmd = resumeCommand(for: kinds) {
             // Interactive login shell so PATH is fully set, run the resume
             // command, then drop to a normal shell in the same folder when the
             // agent exits (so the tab stays useful instead of dying).
             arguments = ["-l", "-i", "-c", "\(cmd); exec \(shell) -l"]
         } else {
+            // Not readable, or no agent to resume: just a shell.
             arguments = ["-l"]
         }
 
