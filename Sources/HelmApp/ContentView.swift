@@ -10,6 +10,14 @@ struct ContentView: View {
     @State private var showingSave = false
     @State private var newWorkspaceName = ""
     @State private var gridColumns = 1   // 1 = single, 2 = 2x2, 3 = 3x3, 4 = 4x4
+    @AppStorage("deck.theme") private var themeName: String = ""
+
+    private var selectedTheme: TerminiTerminalTheme? {
+        TerminiTerminalTheme.presets.first { $0.name == themeName }
+    }
+    private var terminalAppearance: TerminiTerminalAppearance {
+        TerminiTerminalAppearance(theme: selectedTheme)
+    }
     @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
     @State private var pickerFolder: String?
     @State private var pickerSessions: [SessionRecord] = []
@@ -36,6 +44,18 @@ struct ContentView: View {
                         }
                         .help("Stop all idle agents to reclaim RAM (resumable later)")
                     }
+                }
+                ToolbarItem {
+                    Menu {
+                        Button("Default") { themeName = "" }
+                        Divider()
+                        ForEach(TerminiTerminalTheme.presets) { theme in
+                            Button(theme.name) { themeName = theme.name }
+                        }
+                    } label: {
+                        Image(systemName: "paintpalette")
+                    }
+                    .help("Terminal theme")
                 }
                 ToolbarItem {
                     Button {
@@ -222,8 +242,8 @@ struct ContentView: View {
                     .background(Color.yellow.opacity(0.12))
                     Divider()
                 }
-                TerminiTerminalView(controller: controller, appearance: .default)
-                    .id(folder)
+                TerminiTerminalView(controller: controller, appearance: terminalAppearance)
+                    .id(folder + "|" + themeName)
             }
         } else {
             ContentUnavailableView(
@@ -277,6 +297,8 @@ struct ContentView: View {
                                 folder: folder,
                                 terminals: terminals,
                                 agentLabel: agentLabel(for: folder),
+                                appearance: terminalAppearance,
+                                themeKey: themeName,
                                 onFocus: { selected = folder; gridColumns = 1 },
                                 onResume: { resumeAction(folder) })
                             .frame(width: cellW, height: cellH)
@@ -418,6 +440,8 @@ struct GridCell: View {
     let folder: String
     @ObservedObject var terminals: TerminalManager
     let agentLabel: String
+    let appearance: TerminiTerminalAppearance
+    let themeKey: String
     let onFocus: () -> Void
     let onResume: () -> Void
 
@@ -442,7 +466,8 @@ struct GridCell: View {
             .padding(.horizontal, 6).padding(.vertical, 4)
             .background(Color.secondary.opacity(0.12))
             if let controller = terminals.controller(for: folder) {
-                TerminiTerminalView(controller: controller, appearance: .default)
+                TerminiTerminalView(controller: controller, appearance: appearance)
+                    .id(folder + "|" + themeKey)
             } else {
                 Color.black
             }
