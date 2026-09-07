@@ -5,7 +5,10 @@ import Termini
 struct ContentView: View {
     @StateObject private var model = SessionListModel()
     @StateObject private var terminals = TerminalManager()
+    @StateObject private var store = WorkspaceStore()
     @State private var selected: String?   // selected session's folder
+    @State private var showingSave = false
+    @State private var newWorkspaceName = ""
     @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
     @State private var pickerFolder: String?
     @State private var pickerSessions: [SessionRecord] = []
@@ -13,6 +16,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selected) {
+                workspacesSection
                 sessionSection("Live", .live)
                 sessionSection("Warm", .warm)
                 sessionSection("Cold", .cold)
@@ -34,6 +38,16 @@ struct ContentView: View {
                 }
                 ToolbarItem {
                     Button {
+                        newWorkspaceName = ""
+                        showingSave = true
+                    } label: {
+                        Image(systemName: "bookmark")
+                    }
+                    .disabled(terminals.openOrder.isEmpty)
+                    .help("Save the open tabs as a workspace")
+                }
+                ToolbarItem {
+                    Button {
                         Task { await model.refresh() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -41,6 +55,13 @@ struct ContentView: View {
                     .disabled(model.loading)
                     .help("Refresh now")
                 }
+            }
+            .alert("Save workspace", isPresented: $showingSave) {
+                TextField("Name", text: $newWorkspaceName)
+                Button("Save") { store.save(name: newWorkspaceName, folders: terminals.openOrder) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Save the \(terminals.openOrder.count) open tab(s) as a named workspace you can reopen in one click.")
             }
         } detail: {
             VStack(spacing: 0) {
@@ -94,9 +115,45 @@ struct ContentView: View {
                     })
             }
         }
+        .onChange(of: terminals.openOrder) { _, folders in
+            store.updateLastOpen(folders)
+        }
         .task {
             await model.refresh()
             model.startAutoRefresh()
+        }
+    }
+
+    private func openFolders(_ folders: [String]) {
+        for folder in folders {
+            let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? [.claude]
+            terminals.open(folder: folder, kinds: kinds)
+        }
+        selected = folders.last
+    }
+
+    @ViewBuilder
+    private var workspacesSection: some View {
+        if !store.workspaces.isEmpty || !store.lastOpen.isEmpty {
+            Section("Workspaces") {
+                if !store.lastOpen.isEmpty {
+                    Button {
+                        openFolders(store.lastOpen)
+                    } label: {
+                        Label("Last session (\(store.lastOpen.count))", systemImage: "clock.arrow.circlepath")
+                    }
+                }
+                ForEach(store.workspaces) { ws in
+                    Button {
+                        openFolders(ws.folders)
+                    } label: {
+                        Label("\(ws.name) (\(ws.folders.count))", systemImage: "square.stack.3d.up")
+                    }
+                    .contextMenu {
+                        Button("Delete", role: .destructive) { store.delete(ws) }
+                    }
+                }
+            }
         }
     }
 
