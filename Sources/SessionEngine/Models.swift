@@ -72,6 +72,22 @@ public struct HistoryEntry: Codable, Sendable, Identifiable {
     public var folderName: String { (folder as NSString).lastPathComponent }
 }
 
+/// One individual saved conversation within a folder (for the resume picker).
+public struct SessionRecord: Codable, Sendable, Identifiable {
+    public var id: String { sessionId }
+    public let sessionId: String        // the transcript's UUID (its file stem)
+    public let folder: String
+    public let lastActivity: Date
+    public let preview: String          // first user message, truncated
+
+    public init(sessionId: String, folder: String, lastActivity: Date, preview: String) {
+        self.sessionId = sessionId
+        self.folder = folder
+        self.lastActivity = lastActivity
+        self.preview = preview
+    }
+}
+
 /// A listening dev server (node/vite/next/etc.) with its port and how long it
 /// has been alive. Orphaned ones are a classic slow RAM leak.
 public struct DevServer: Codable, Sendable, Identifiable {

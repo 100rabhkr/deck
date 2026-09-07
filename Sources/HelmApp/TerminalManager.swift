@@ -17,7 +17,14 @@ final class TerminalManager: ObservableObject {
 
     func open(folder: String, kinds: [AgentKind]) {
         guard workspaces[folder] == nil else { return }
-        workspaces[folder] = makeWorkspace(folder: folder, kinds: kinds)
+        workspaces[folder] = makeWorkspace(folder: folder, explicitCommand: nil, kinds: kinds)
+        openOrder.append(folder)
+    }
+
+    /// Open a folder resuming a specific session (from the picker).
+    func open(folder: String, command: String) {
+        guard workspaces[folder] == nil else { return }
+        workspaces[folder] = makeWorkspace(folder: folder, explicitCommand: command, kinds: [])
         openOrder.append(folder)
     }
 
@@ -38,7 +45,7 @@ final class TerminalManager: ObservableObject {
 
     // MARK: - internals
 
-    private func makeWorkspace(folder: String, kinds: [AgentKind]) -> TerminiLocalPTYWorkspace {
+    private func makeWorkspace(folder: String, explicitCommand: String?, kinds: [AgentKind]) -> TerminiLocalPTYWorkspace {
         let fm = FileManager.default
         // Must be readable, not just present. A TCC-blocked folder "exists" but
         // returns EPERM, which would leave the shell in an unreadable cwd and
@@ -49,7 +56,7 @@ final class TerminalManager: ObservableObject {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
         let arguments: [String]
-        if readable, let cmd = resumeCommand(for: kinds) {
+        if readable, let cmd = explicitCommand ?? resumeCommand(for: kinds) {
             // Interactive login shell so PATH is fully set, run the resume
             // command, then drop to a normal shell in the same folder when the
             // agent exits (so the tab stays useful instead of dying).

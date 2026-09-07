@@ -69,6 +69,68 @@ public enum History {
         return "/" + s.replacingOccurrences(of: "-", with: "/")
     }
 
+    /// First user-message text from a transcript, truncated, for the picker.
+    static func firstUserText(fromFile path: String) -> String {
+        guard let fh = FileHandle(forReadingAtPath: path) else { return "" }
+        defer { try? fh.close() }
+        let data = fh.readData(ofLength: 65_536)
+        guard let s = String(data: data, encoding: .utf8),
+              let r = s.range(of: "\"text\":\"") else { return "" }
+        var out = ""
+        var esc = false
+        var i = r.upperBound
+        while i < s.endIndex, out.count < 100 {
+            let c = s[i]
+            if esc { out.append(c); esc = false }
+            else if c == "\\" { esc = true }
+            else if c == "\"" { break }
+            else { out.append(c) }
+            i = s.index(after: i)
+        }
+        return out.replacingOccurrences(of: "\\n", with: " ").trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Every saved Claude conversation whose recorded cwd is `folder`, newest
+    /// first. Used by the resume picker when a folder has more than one.
+    public static func claudeSessions(inFolder folder: String) -> [SessionRecord] {
+        let fm = FileManager.default
+        let root = NSString(string: "~/.claude/projects").expandingTildeInPath
+        guard let dirs = try? fm.contentsOfDirectory(atPath: root) else { return [] }
+
+        var records: [SessionRecord] = []
+        for d in dirs {
+            let dir = root + "/" + d
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue,
+                  let items = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+            let jsonls = items.filter { $0.hasSuffix(".jsonl") }
+            guard !jsonls.isEmpty else { continue }
+
+            // Does this project dir belong to `folder`? Test its newest transcript's cwd.
+            var newest: (path: String, date: Date)?
+            for it in jsonls {
+                let full = dir + "/" + it
+                var fdir: ObjCBool = false
+                fm.fileExists(atPath: full, isDirectory: &fdir); if fdir.boolValue { continue }
+                if let m = (try? fm.attributesOfItem(atPath: full))?[.modificationDate] as? Date {
+                    if newest == nil || m > newest!.date { newest = (full, m) }
+                }
+            }
+            guard let n = newest, parseCwd(fromFile: n.path) == folder else { continue }
+
+            for it in jsonls {
+                let full = dir + "/" + it
+                var fdir: ObjCBool = false
+                fm.fileExists(atPath: full, isDirectory: &fdir); if fdir.boolValue { continue }
+                let stem = (it as NSString).deletingPathExtension
+                let m = (try? fm.attributesOfItem(atPath: full))?[.modificationDate] as? Date ?? .distantPast
+                records.append(SessionRecord(sessionId: stem, folder: folder,
+                                             lastActivity: m, preview: firstUserText(fromFile: full)))
+            }
+        }
+        return records.sorted { $0.lastActivity > $1.lastActivity }
+    }
+
     // MARK: - Codex
 
     static func codexSessions(limit: Int = 200) -> [RawSession] {

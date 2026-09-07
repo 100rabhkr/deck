@@ -7,6 +7,8 @@ struct ContentView: View {
     @StateObject private var terminals = TerminalManager()
     @State private var selected: String?   // selected session's folder
     @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
+    @State private var pickerFolder: String?
+    @State private var pickerSessions: [SessionRecord] = []
 
     var body: some View {
         NavigationSplitView {
@@ -50,13 +52,47 @@ struct ContentView: View {
             }
         }
         .onChange(of: selected) { _, newValue in
-            guard let folder = newValue else { return }
+            guard let folder = newValue, !terminals.isOpen(folder) else { return }
             // Capture "already live elsewhere" before we spawn our own resume.
-            if !terminals.isOpen(folder), model.isLive(folder) {
-                openedWhileLive.insert(folder)
-            }
+            if model.isLive(folder) { openedWhileLive.insert(folder) }
             let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
-            terminals.open(folder: folder, kinds: kinds)
+            guard kinds.contains(.claude) else {
+                terminals.open(folder: folder, kinds: kinds)   // codex / shell: no picker
+                return
+            }
+            // Claude: if the folder has multiple saved conversations, ask which.
+            Task {
+                let sessions = await Task.detached { History.claudeSessions(inFolder: folder) }.value
+                guard selected == folder, !terminals.isOpen(folder) else { return }
+                if sessions.count > 1 {
+                    pickerSessions = sessions
+                    pickerFolder = folder
+                } else {
+                    terminals.open(folder: folder, kinds: kinds)
+                }
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { pickerFolder != nil },
+            set: { if !$0 { pickerFolder = nil } })
+        ) {
+            if let folder = pickerFolder {
+                ResumePicker(
+                    folder: folder,
+                    sessions: pickerSessions,
+                    onPick: { id in
+                        terminals.open(folder: folder, command: "claude --resume \(id)")
+                        pickerFolder = nil
+                    },
+                    onMostRecent: {
+                        terminals.open(folder: folder, kinds: [.claude])
+                        pickerFolder = nil
+                    },
+                    onCancel: {
+                        selected = nil
+                        pickerFolder = nil
+                    })
+            }
         }
         .task {
             await model.refresh()
@@ -186,6 +222,57 @@ struct SessionRow: View {
         case .warm: return .yellow
         case .cold: return .gray
         }
+    }
+}
+
+/// Chooser shown when a folder has more than one saved Claude conversation.
+struct ResumePicker: View {
+    let folder: String
+    let sessions: [SessionRecord]
+    let onPick: (String) -> Void
+    let onMostRecent: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Resume which session?").font(.headline).padding([.top, .horizontal])
+            Text((folder as NSString).lastPathComponent)
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal).padding(.bottom, 8)
+            Divider()
+            List(sessions) { session in
+                Button {
+                    onPick(session.sessionId)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(session.preview.isEmpty
+                             ? "session \(String(session.sessionId.prefix(8)))"
+                             : session.preview)
+                            .lineLimit(2)
+                        Text(relative(session.lastActivity))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Divider()
+            HStack {
+                Button("Cancel", role: .cancel) { onCancel() }
+                Spacer()
+                Button("Continue most recent") { onMostRecent() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(width: 500, height: 440)
+    }
+
+    private func relative(_ date: Date) -> String {
+        let s = Int(Date().timeIntervalSince(date))
+        if s < 3600 { return "\(max(1, s / 60))m ago" }
+        if s < 86400 { return "\(s / 3600)h ago" }
+        return "\(s / 86400)d ago"
     }
 }
 
