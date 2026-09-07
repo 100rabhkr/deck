@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var model = SessionListModel()
     @StateObject private var terminals = TerminalManager()
     @State private var selected: String?   // selected session's folder
+    @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
 
     var body: some View {
         NavigationSplitView {
@@ -50,6 +51,10 @@ struct ContentView: View {
         }
         .onChange(of: selected) { _, newValue in
             guard let folder = newValue else { return }
+            // Capture "already live elsewhere" before we spawn our own resume.
+            if !terminals.isOpen(folder), model.isLive(folder) {
+                openedWhileLive.insert(folder)
+            }
             let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
             terminals.open(folder: folder, kinds: kinds)
         }
@@ -70,12 +75,24 @@ struct ContentView: View {
                     Spacer()
                     Button("Sleep") {
                         terminals.close(folder: folder)
+                        openedWhileLive.remove(folder)
                         selected = terminals.openOrder.last
                     }
                     .help("Stop this terminal and reclaim its RAM (resumable later)")
                 }
                 .padding(8)
                 Divider()
+                if openedWhileLive.contains(folder) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle").foregroundStyle(.blue)
+                        Text("A session for this project is already running elsewhere. This tab is a separate resume, not that live process.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(Color.blue.opacity(0.10))
+                    Divider()
+                }
                 if terminals.noAccess.contains(folder) {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)

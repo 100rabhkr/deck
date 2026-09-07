@@ -74,7 +74,7 @@ final class TerminalManager: ObservableObject {
     /// Codex, else a plain shell (nil).
     private func resumeCommand(for kinds: [AgentKind]) -> String? {
         if kinds.contains(.claude) { return "claude --continue" }
-        if kinds.contains(.codex) { return "codex resume" }
+        if kinds.contains(.codex) { return "codex resume --last" }
         return nil
     }
 }
