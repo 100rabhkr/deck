@@ -13,14 +13,34 @@ struct SettingsView: View {
     @AppStorage("deck.restoreLast") private var restoreLast = false
     @AppStorage("deck.claudeResume") private var claudeResume = "claude --continue"
     @AppStorage("deck.codexResume") private var codexResume = "codex resume --last"
+    @AppStorage("deck.chime") private var chime = true
+    @AppStorage("deck.notify") private var notify = true
+    @AppStorage("deck.chimeSound") private var chimeSound = "Beep"
 
     var body: some View {
         TabView {
             appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }
             behaviourTab.tabItem { Label("Behaviour", systemImage: "slider.horizontal.3") }
             agentsTab.tabItem { Label("Agents", systemImage: "terminal") }
+            chimeTab.tabItem { Label("Chime", systemImage: "bell") }
         }
         .frame(width: 480, height: 300)
+    }
+
+    private var chimeTab: some View {
+        Form {
+            Toggle("Chime when a background session needs you", isOn: $chime)
+            Picker("Sound", selection: $chimeSound) {
+                ForEach(["Beep", "Ping", "Glass", "Submarine", "Funk", "Hero", "Tink"], id: \.self) {
+                    Text($0).tag($0)
+                }
+            }
+            .disabled(!chime)
+            Toggle("Also show a notification", isOn: $notify).disabled(!chime)
+            Text("Deck watches each session's terminal bell. When one you are not looking at rings, it lets you know.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(20)
     }
 
     private var appearanceTab: some View {

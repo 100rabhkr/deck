@@ -113,6 +113,7 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onChange(of: selected) { _, newValue in
+            terminals.focus(newValue)   // clears attention on the folder you look at
             guard let folder = newValue, !terminals.isOpen(folder) else { return }
             // A session already running elsewhere: note it, so a later Resume is honest.
             if model.isLive(folder) { openedWhileLive.insert(folder) }
@@ -316,6 +317,7 @@ struct ContentView: View {
                                 agentLabel: agentLabel(for: folder),
                                 appearance: terminalAppearance,
                                 themeKey: appearanceKey,
+                                hasAttention: terminals.attention.contains(folder),
                                 onFocus: { selected = folder; gridColumns = 1 },
                                 onResume: { resumeAction(folder) })
                             .frame(width: cellW, height: cellH)
@@ -332,7 +334,9 @@ struct ContentView: View {
         let items = model.entries(status)
         Section("\(title) (\(items.count))") {
             ForEach(items) { entry in
-                SessionRow(entry: entry, isOpen: terminals.isOpen(entry.folder))
+                SessionRow(entry: entry,
+                           isOpen: terminals.isOpen(entry.folder),
+                           hasAttention: terminals.attention.contains(entry.folder))
                     .tag(entry.folder)
                     .contextMenu {
                         if entry.status == .live {
@@ -375,6 +379,7 @@ struct ContentView: View {
 struct SessionRow: View {
     let entry: HistoryEntry
     let isOpen: Bool
+    let hasAttention: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -385,7 +390,9 @@ struct SessionRow: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if isOpen {
+            if hasAttention {
+                Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(.orange)
+            } else if isOpen {
                 Image(systemName: "circle.fill").font(.system(size: 5)).foregroundStyle(.tertiary)
             }
         }
@@ -459,12 +466,16 @@ struct GridCell: View {
     let agentLabel: String
     let appearance: TerminiTerminalAppearance
     let themeKey: String
+    let hasAttention: Bool
     let onFocus: () -> Void
     let onResume: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
+                if hasAttention {
+                    Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                }
                 Text(terminals.folderName(folder)).font(.caption).lineLimit(1)
                 Spacer()
                 Button(action: onResume) {
@@ -490,7 +501,9 @@ struct GridCell: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+        .overlay(RoundedRectangle(cornerRadius: 6)
+            .stroke(hasAttention ? Color.orange : Color.secondary.opacity(0.3),
+                    lineWidth: hasAttention ? 2 : 1))
     }
 }
 
@@ -504,6 +517,9 @@ struct TabStrip: View {
             HStack(spacing: 6) {
                 ForEach(terminals.openOrder, id: \.self) { folder in
                     HStack(spacing: 6) {
+                        if terminals.attention.contains(folder) {
+                            Image(systemName: "bell.fill").font(.system(size: 8)).foregroundStyle(.orange)
+                        }
                         Text(terminals.folderName(folder)).lineLimit(1)
                         Button {
                             terminals.close(folder: folder)

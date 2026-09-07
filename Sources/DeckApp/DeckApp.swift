@@ -18,6 +18,7 @@ func raiseFileDescriptorLimit(to target: rlim_t = 65536) {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         raiseFileDescriptorLimit()
+        Chime.requestAuthorizationIfPossible()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
