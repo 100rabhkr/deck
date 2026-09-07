@@ -11,13 +11,25 @@ struct ContentView: View {
     @State private var newWorkspaceName = ""
     @State private var gridColumns = 1   // 1 = single, 2 = 2x2, 3 = 3x3, 4 = 4x4
     @AppStorage("deck.theme") private var themeName: String = ""
+    @AppStorage("deck.fontSize") private var fontSize: Double = 13
+    @AppStorage("deck.fontFamily") private var fontFamily: String = ""
+    @AppStorage("deck.refreshSeconds") private var refreshSeconds: Double = 4
+    @AppStorage("deck.gridDefault") private var gridDefault: Int = 1
+    @AppStorage("deck.idleMB") private var idleMB: Int = 40
+    @AppStorage("deck.restoreLast") private var restoreLast: Bool = false
+    @AppStorage("deck.claudeResume") private var claudeResume: String = "claude --continue"
+    @AppStorage("deck.codexResume") private var codexResume: String = "codex resume --last"
 
     private var selectedTheme: TerminiTerminalTheme? {
         TerminiTerminalTheme.presets.first { $0.name == themeName }
     }
     private var terminalAppearance: TerminiTerminalAppearance {
-        TerminiTerminalAppearance(theme: selectedTheme)
+        TerminiTerminalAppearance(
+            theme: selectedTheme,
+            fontSize: fontSize,
+            fontFamily: fontFamily.isEmpty ? nil : TerminiTerminalFontFamily(name: fontFamily))
     }
+    private var appearanceKey: String { "\(themeName)|\(Int(fontSize))|\(fontFamily)" }
     @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
     @State private var pickerFolder: String?
     @State private var pickerSessions: [SessionRecord] = []
@@ -119,7 +131,7 @@ struct ContentView: View {
                         pickerFolder = nil
                     },
                     onMostRecent: {
-                        terminals.run("claude --continue", in: folder)
+                        terminals.run(claudeResume, in: folder)
                         pickerFolder = nil
                     },
                     onCancel: { pickerFolder = nil })
@@ -129,9 +141,14 @@ struct ContentView: View {
             store.updateLastOpen(folders)
         }
         .task {
+            model.idleThresholdMB = idleMB
+            gridColumns = gridDefault
             await model.refresh()
-            model.startAutoRefresh()
+            if restoreLast, !store.lastOpen.isEmpty { openFolders(store.lastOpen) }
+            model.startAutoRefresh(every: refreshSeconds)
         }
+        .onChange(of: refreshSeconds) { _, s in model.startAutoRefresh(every: s) }
+        .onChange(of: idleMB) { _, v in model.idleThresholdMB = v }
     }
 
     private func openFolders(_ folders: [String]) {
@@ -152,7 +169,7 @@ struct ContentView: View {
     private func resumeAction(_ folder: String) {
         let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
         if kinds.contains(.codex), !kinds.contains(.claude) {
-            terminals.run("codex resume --last", in: folder)
+            terminals.run(codexResume, in: folder)
             return
         }
         Task {
@@ -161,7 +178,7 @@ struct ContentView: View {
                 pickerSessions = sessions
                 pickerFolder = folder
             } else {
-                terminals.run("claude --continue", in: folder)
+                terminals.run(claudeResume, in: folder)
             }
         }
     }
@@ -243,7 +260,7 @@ struct ContentView: View {
                     Divider()
                 }
                 TerminiTerminalView(controller: controller, appearance: terminalAppearance)
-                    .id(folder + "|" + themeName)
+                    .id(folder + "|" + appearanceKey)
             }
         } else {
             ContentUnavailableView(
@@ -298,7 +315,7 @@ struct ContentView: View {
                                 terminals: terminals,
                                 agentLabel: agentLabel(for: folder),
                                 appearance: terminalAppearance,
-                                themeKey: themeName,
+                                themeKey: appearanceKey,
                                 onFocus: { selected = folder; gridColumns = 1 },
                                 onResume: { resumeAction(folder) })
                             .frame(width: cellW, height: cellH)

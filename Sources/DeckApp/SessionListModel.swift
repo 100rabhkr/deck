@@ -11,6 +11,9 @@ final class SessionListModel: ObservableObject {
     @Published var servers: [DevServer] = []
     @Published var loading = false
 
+    /// RAM below which a live agent is treated as idle (from Settings).
+    var idleThresholdMB = 40
+
     private var autoRefresh: Task<Void, Never>?
 
     func refresh() async {
@@ -44,7 +47,7 @@ final class SessionListModel: ObservableObject {
         entries.filter { $0.status == status }
     }
 
-    var idleCount: Int { liveAgents.filter { $0.isLikelyIdle }.count }
+    var idleCount: Int { liveAgents.filter { $0.rssMB < idleThresholdMB }.count }
 
     func isLive(_ folder: String) -> Bool {
         liveAgents.contains { $0.folder == folder }
@@ -61,7 +64,7 @@ final class SessionListModel: ObservableObject {
 
     /// SIGTERM every idle live agent at once.
     func sleepAllIdle() async {
-        let pids = liveAgents.filter { $0.isLikelyIdle }.map { $0.pid }
+        let pids = liveAgents.filter { $0.rssMB < idleThresholdMB }.map { $0.pid }
         await Task.detached { pids.forEach { Discovery.sleepAgent(pid: $0) } }.value
         await refresh()
     }

@@ -33,5 +33,9 @@ struct DeckApp: App {
             ContentView()
         }
         .defaultSize(width: 1120, height: 700)
+
+        Settings {
+            SettingsView()
+        }
     }
 }
