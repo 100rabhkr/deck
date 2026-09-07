@@ -77,14 +77,19 @@ final class TerminalManager: ObservableObject {
         let dir = readable ? URL(fileURLWithPath: folder) : fm.homeDirectoryForCurrentUser
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
-        // Give the shell a clean environment, like a fresh Terminal window. In
-        // particular strip Claude Code's own markers (CLAUDECODE,
-        // CLAUDE_CODE_*), which include CLAUDE_CODE_CHILD_SESSION. If they leak
-        // in, a `claude` started here thinks it is a nested child and skips
-        // writing its transcript, so the chat never shows up in --resume.
-        let env = ProcessInfo.processInfo.environment.filter {
+        // Give the shell a clean environment, like a fresh Terminal window.
+        // Strip Claude Code's own markers (CLAUDECODE, CLAUDE_CODE_*, incl.
+        // CLAUDE_CODE_CHILD_SESSION); if they leak in, a `claude` started here
+        // thinks it is a nested child and skips writing its transcript, so the
+        // chat never shows up in --resume.
+        var env = ProcessInfo.processInfo.environment.filter {
             $0.key != "CLAUDECODE" && !$0.key.hasPrefix("CLAUDE_CODE_")
         }
+        // The child marker can be re-injected by macOS zsh session restore, so
+        // also force transcript persistence (Claude Code's own override) and
+        // disable session restore for a clean shell.
+        env["CLAUDE_CODE_FORCE_SESSION_PERSISTENCE"] = "1"
+        env["SHELL_SESSIONS_DISABLE"] = "1"
 
         let spec = TerminiProcessSpec(
             executableURL: URL(fileURLWithPath: shell),
