@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "helm",
+    name: "deck",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "SessionEngine", targets: ["SessionEngine"]),
         .executable(name: "deck", targets: ["deck"]),
-        .executable(name: "HelmApp", targets: ["HelmApp"]),
+        .executable(name: "DeckApp", targets: ["DeckApp"]),
     ],
     dependencies: [
         // Pinned, prebuilt libghostty terminal surface (proven in the Phase 0 spike).
@@ -22,9 +22,9 @@ let package = Package(
         // The CLI front-end. A thin presentation layer over SessionEngine.
         .executableTarget(name: "deck", dependencies: ["SessionEngine"]),
 
-        // The macOS app: home screen (SessionEngine) + libghostty terminal tabs.
+        // The macOS app: home screen (SessionEngine) + terminal grid.
         .executableTarget(
-            name: "HelmApp",
+            name: "DeckApp",
             dependencies: [
                 "SessionEngine",
                 .product(name: "Termini", package: "Termini"),

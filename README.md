@@ -1,50 +1,62 @@
-# Helm
+# Deck
 
-A control station for a terminal-centric, multi-agent coding workflow. Helm keeps track of every Claude / Codex session and dev server across all your projects, so you always know what is running where, and can put idle agents to sleep to reclaim memory without losing a single conversation.
+A control station for running many terminal coding sessions at once.
 
-Built because running a dozen-plus concurrent AI coding sessions on one machine turns into invisible RAM and no situational awareness. Helm makes the fleet visible and controllable.
+If you drive several AI coding agents across a lot of projects, you know the mess: a dozen terminal windows stacked on top of each other, no idea which sessions are still alive, which are idle burning memory, or where you left off in each. Deck turns that pile into one calm dashboard.
 
-## The model
+## Why it exists
 
-Every session is in one of three states:
+Running one AI coding agent is easy. Running fifteen, across fifteen project folders, is chaos. You lose track of what is open, background agents sit there holding gigabytes of RAM while you are not looking at them, and finding the right window is a game of alt-tab roulette.
 
-- **live** — an agent process is running and holding RAM.
-- **warm** — a terminal/pane is open but the agent exited; resumes instantly, ~0 RAM.
-- **cold** — no pane, only history on disk; resume opens a shell and continues.
+Deck was built to make the whole fleet visible and controllable from one place: see every session, open the ones you want, resume an agent when you choose to (not automatically), put idle ones to sleep to get your memory back, and lay several out side by side when you want to watch them work.
 
-The core action is **sleep**: stop a live agent, reclaim its RAM, keep the session resumable from disk. Only *live* sessions cost memory, so sleeping the idle ones is free savings.
+## What it does
 
-## Structure
+- **One dashboard for every session.** Deck reads your machine and lists every coding session across all your projects, tagged **live** (running now), **warm** (a shell is open, no agent), or **cold** (history on disk). It auto-refreshes, so the list always matches reality.
+- **Open a session as a real terminal.** Click a project and Deck opens a fast, GPU-rendered terminal right in that folder. Opening is cheap: you get a shell, nothing heavy starts on its own.
+- **One-touch resume.** When you actually want the agent, hit Resume and Deck drops you back into that project's conversation. If a folder has several past conversations, it asks which one.
+- **Sleep to reclaim memory.** Stop any session's agent with one click (or "Sleep all idle" for the whole idle pile). Nothing is lost, the conversation resumes from disk whenever you come back.
+- **Tile them in a grid.** Switch between a single focused terminal and a 2x2, 3x3, or 4x4 grid of live sessions, so you can watch many at once instead of juggling windows.
+- **Workspaces.** Save a set of projects and reopen them all in one click, tiled automatically. "Last session" brings back whatever you had open.
+- **Dev-server tracker.** Deck also spots your running dev servers (their ports and uptime) and lets you kill a stray one.
+- **Themes.** Recolour the terminals from a set of built-in themes.
 
-- `SessionEngine` — the reusable core: discovery of live agents (from the process table), warm/cold history (from on-disk session stores), dev-server tracking, uptimes, the sleep action, and pluggable per-folder context. Agent-agnostic; anything that runs as a process or leaves a session file behind can be tracked. This module is the product's brain and stays isolated so the GUI imports the exact same logic the CLI uses.
-- `deck` — the CLI front-end. A thin presentation layer over `SessionEngine`.
-
-### Context providers (no hard dependencies)
-
-Each folder can carry a one-line "what's happening here" summary, resolved through a provider chain so the engine never depends on any one source:
-
-- `GitContextProvider` — the folder's last commit subject. Universal; every developer has git.
-- `BrainContextProvider` — reads `~/brain/sessions` **only if it exists**, otherwise reports itself unavailable and is skipped. A personal bonus, never a requirement.
-
-New sources (a `.helm/summary` file, a README line) drop in as additional providers.
-
-Later phases wire `SessionEngine` into a native macOS app (SwiftUI home screen, tabs backed by an embedded terminal engine, one-touch multi-window workspaces, and attention notifications when a background session needs input).
-
-## Usage
+There is also a small CLI, `deck`, that exposes the same engine:
 
 ```
-swift build
-swift run deck               # live agents + dev servers
-swift run deck history       # all sessions: live / warm / cold, newest first
-swift run deck history -c    # ...with a context summary per folder (slower)
-swift run deck servers       # dev servers only
-swift run deck sleep 1234    # stop a live agent, reclaim its RAM
-swift run deck selftest      # built-in checks (no XCTest / Xcode needed)
-swift run deck --json        # machine-readable, for the GUI
+deck            live agents + dev servers
+deck history    every session: live / warm / cold
+deck sleep <pid>   stop a live agent, reclaim its RAM
+deck servers    dev servers only
 ```
 
-## Status
+## Build and run
 
-Phase 1 + 1.5: the session engine (live + warm/cold history + dev servers + pluggable context) and the `deck` CLI. Usable today.
+Requires macOS 14+ and the Swift toolchain (Xcode Command Line Tools are enough).
 
-Known follow-up: `cwd` lookups shell out to `lsof`; a native libproc call would make discovery near-instant. Fine for the CLI; worth doing before the GUI polls on a timer.
+```
+git clone https://github.com/100rabhkr/deck.git
+cd deck
+swift run DeckApp        # the app
+swift run deck history   # the CLI
+```
+
+To build a double-clickable `Deck.app`:
+
+```
+scripts/bundle.sh        # produces dist/Deck.app
+```
+
+### macOS permissions
+
+macOS protects your Downloads, Documents, and Desktop folders. If your projects live in one of those, grant Deck (or the terminal you launch it from) access under **System Settings, Privacy & Security, Full Disk Access**, then relaunch. Without it, terminals still open, but in your home folder.
+
+## How it works
+
+Deck is a native macOS app. It reads live session state from the process table (instantly, via the system's own APIs) and reads session history from where your coding tools already store it on disk. Each pane is a real terminal. The reusable core lives in the `SessionEngine` module, and both the app and the `deck` CLI are thin layers over it.
+
+## License
+
+MIT. Do anything you like with it, build it into whatever you want, just keep the attribution. See [LICENSE](LICENSE).
+
+Built by [Saurabh Kumar](https://github.com/100rabhkr).

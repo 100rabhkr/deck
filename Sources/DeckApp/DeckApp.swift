@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct HelmApp: App {
+struct DeckApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {
