@@ -11,8 +11,21 @@ final class TerminalSession {
     private var process: TerminiLocalPTYProcess?
     private let spec: TerminiProcessSpec
 
-    /// Fired on the main actor when the program rings the bell.
+    /// Fired on the main actor when the program rings the bell AND then goes
+    /// quiet (i.e. it is actually waiting on you, not mid-work).
     var onBell: (() -> Void)?
+    private var outputTick = 0
+
+    /// A bell only counts as "needs you" if no more output arrives for a short
+    /// window after it. Agents ring the bell during normal work too, so a bell
+    /// mid-stream (more output follows) is ignored.
+    private func scheduleBellCheck() {
+        let tick = outputTick
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.outputTick == tick else { return }  // more output = still working
+            self.onBell?()
+        }
+    }
 
     init(spec: TerminiProcessSpec) {
         self.spec = spec
@@ -36,8 +49,9 @@ final class TerminalSession {
             let bell = data.contains(0x07)
             Task { @MainActor in
                 guard let self else { return }
+                self.outputTick &+= 1
                 self.controller.processRemoteOutput(data)
-                if bell { self.onBell?() }
+                if bell { self.scheduleBellCheck() }
             }
         }
         p.onExit = { _ in }
