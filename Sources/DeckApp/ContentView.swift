@@ -82,7 +82,7 @@ struct ContentView: View {
                 }
                 ToolbarItem {
                     Button {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                        SettingsWindowController.shared.show()
                     } label: {
                         Image(systemName: "gearshape")
                     }

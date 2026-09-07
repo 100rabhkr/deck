@@ -34,9 +34,13 @@ struct DeckApp: App {
             ContentView()
         }
         .defaultSize(width: 1120, height: 700)
-
-        Settings {
-            SettingsView()
+        .commands {
+            // Route the standard Settings menu item + Cmd-, to our own window,
+            // since SwiftUI's Settings scene does not open reliably unbundled.
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { SettingsWindowController.shared.show() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }
