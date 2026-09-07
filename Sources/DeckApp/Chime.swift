@@ -12,7 +12,7 @@ enum Chime {
 
     static func fire(folderName: String) {
         let d = UserDefaults.standard
-        guard (d.object(forKey: "deck.chime") as? Bool) ?? true else { return }
+        guard (d.object(forKey: "deck.chime") as? Bool) ?? false else { return }
 
         // Sound
         let soundName = d.string(forKey: "deck.chimeSound") ?? ""

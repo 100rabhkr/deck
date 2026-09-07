@@ -59,42 +59,32 @@ struct ContentView: View {
                     }
                     .help("Open a terminal in any folder")
                 }
-                if model.idleCount > 0 {
-                    ToolbarItem {
+                ToolbarItem {
+                    Menu {
                         Button {
-                            Task { await model.sleepAllIdle() }
-                        } label: {
-                            Label("Sleep \(model.idleCount) idle", systemImage: "moon.zzz")
+                            Task { await model.refresh() }
+                        } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+
+                        Button {
+                            newWorkspaceName = ""
+                            showingSave = true
+                        } label: { Label("Save workspace…", systemImage: "bookmark") }
+                        .disabled(terminals.openOrder.isEmpty)
+
+                        if model.idleCount > 0 {
+                            Button {
+                                Task { await model.sleepAllIdle() }
+                            } label: { Label("Sleep \(model.idleCount) idle", systemImage: "moon.zzz") }
                         }
-                        .help("Stop all idle agents to reclaim RAM (resumable later)")
-                    }
-                }
-                ToolbarItem {
-                    Button {
-                        newWorkspaceName = ""
-                        showingSave = true
+
+                        Divider()
+                        Button {
+                            SettingsWindowController.shared.show()
+                        } label: { Label("Settings…", systemImage: "gearshape") }
                     } label: {
-                        Image(systemName: "bookmark")
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .disabled(terminals.openOrder.isEmpty)
-                    .help("Save the open tabs as a workspace")
-                }
-                ToolbarItem {
-                    Button {
-                        Task { await model.refresh() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(model.loading)
-                    .help("Refresh now")
-                }
-                ToolbarItem {
-                    Button {
-                        SettingsWindowController.shared.show()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .help("Settings (⌘,)")
+                    .help("More")
                 }
             }
             .alert("Save workspace", isPresented: $showingSave) {

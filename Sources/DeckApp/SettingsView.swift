@@ -13,7 +13,7 @@ struct SettingsView: View {
     @AppStorage("deck.restoreLast") private var restoreLast = false
     @AppStorage("deck.claudeResume") private var claudeResume = "claude --continue"
     @AppStorage("deck.codexResume") private var codexResume = "codex resume --last"
-    @AppStorage("deck.chime") private var chime = true
+    @AppStorage("deck.chime") private var chime = false
     @AppStorage("deck.notify") private var notify = true
     @AppStorage("deck.chimeSound") private var chimeSound = "Beep"
     @AppStorage("deck.notch") private var notch = true
