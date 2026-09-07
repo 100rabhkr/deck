@@ -9,23 +9,35 @@ struct NotchView: View {
     let edge: NotchEdge
     @ObservedObject var terminals = TerminalManager.shared
     @ObservedObject var model = SessionListModel.shared
+    @State private var hovering = false
 
     private var waiting: [String] { Array(terminals.attention).sorted() }
     private var liveCount: Int { model.liveAgents.count }
     private var idleCount: Int { model.idleCount }
     private var ramGB: Double { Double(model.liveAgents.reduce(0) { $0 + $1.rssMB }) / 1024.0 }
 
+    private var helpText: String {
+        if waiting.isEmpty {
+            return "Deck: \(liveCount) live, \(idleCount) idle, \(String(format: "%.1f", ramGB)) GB. Click to open."
+        }
+        return "Waiting on you: \(waiting.map { terminals.folderName($0) }.joined(separator: ", ")). Click a name to jump."
+    }
+
     var body: some View {
         layout {
             if waiting.isEmpty {
-                Label("\(liveCount)", systemImage: "circle.fill")
+                Label("\(liveCount) live", systemImage: "circle.fill")
                     .foregroundStyle(.green).font(.caption)
                 Text("\(idleCount) idle").font(.caption2).foregroundStyle(.secondary)
                 Text(String(format: "%.1f GB", ramGB)).font(.caption2).foregroundStyle(.secondary)
+                if hovering {
+                    Text("· open Deck").font(.caption2).foregroundStyle(.tertiary)
+                }
             } else {
+                Image(systemName: "bell.fill").foregroundStyle(.orange).font(.caption)
                 ForEach(waiting.prefix(edge == .right ? 4 : 3), id: \.self) { folder in
                     Button { jump(folder) } label: {
-                        Label(terminals.folderName(folder), systemImage: "bell.fill")
+                        Text(terminals.folderName(folder))
                             .font(.caption).foregroundStyle(.orange).lineLimit(1)
                     }
                     .buttonStyle(.plain)
@@ -37,6 +49,8 @@ struct NotchView: View {
         .overlay(Capsule().stroke(waiting.isEmpty ? Color.secondary.opacity(0.25) : Color.orange, lineWidth: waiting.isEmpty ? 1 : 2))
         .contentShape(Capsule())
         .onTapGesture { NSApp.activate(ignoringOtherApps: true) }
+        .onHover { hovering = $0 }
+        .help(helpText)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

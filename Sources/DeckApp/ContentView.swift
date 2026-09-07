@@ -92,6 +92,12 @@ struct ContentView: View {
                     .disabled(model.loading)
                     .help("Refresh now")
                 }
+                ToolbarItem {
+                    SettingsLink {
+                        Image(systemName: "gearshape")
+                    }
+                    .help("Settings (⌘,)")
+                }
             }
             .alert("Save workspace", isPresented: $showingSave) {
                 TextField("Name", text: $newWorkspaceName)
