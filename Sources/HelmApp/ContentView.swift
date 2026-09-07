@@ -9,8 +9,7 @@ struct ContentView: View {
     @State private var selected: String?   // selected session's folder
     @State private var showingSave = false
     @State private var newWorkspaceName = ""
-    @State private var gridMode = false
-    @State private var gridColumns = 2   // 2 = 2x2, 3 = 3x3, 4 = 4x4
+    @State private var gridColumns = 1   // 1 = single, 2 = 2x2, 3 = 3x3, 4 = 4x4
     @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
     @State private var pickerFolder: String?
     @State private var pickerSessions: [SessionRecord] = []
@@ -69,37 +68,23 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 detailControls
                 Divider()
-                if gridMode {
-                    gridView
+                if terminals.openOrder.isEmpty {
+                    placeholderView
+                } else if gridColumns == 1 {
+                    TabStrip(terminals: terminals, selected: $selected)
+                    Divider()
+                    singleTerminalView
                 } else {
-                    if !terminals.openOrder.isEmpty {
-                        TabStrip(terminals: terminals, selected: $selected)
-                        Divider()
-                    }
-                    detailBody
+                    gridView
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onChange(of: selected) { _, newValue in
             guard let folder = newValue, !terminals.isOpen(folder) else { return }
-            // Capture "already live elsewhere" before we spawn our own resume.
+            // A session already running elsewhere: note it, so a later Resume is honest.
             if model.isLive(folder) { openedWhileLive.insert(folder) }
-            let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
-            guard kinds.contains(.claude) else {
-                terminals.open(folder: folder, kinds: kinds)   // codex / shell: no picker
-                return
-            }
-            // Claude: if the folder has multiple saved conversations, ask which.
-            Task {
-                let sessions = await Task.detached { History.claudeSessions(inFolder: folder) }.value
-                guard selected == folder, !terminals.isOpen(folder) else { return }
-                if sessions.count > 1 {
-                    pickerSessions = sessions
-                    pickerFolder = folder
-                } else {
-                    terminals.open(folder: folder, kinds: kinds)
-                }
-            }
+            terminals.open(folder: folder)   // plain shell; Resume is one-touch
         }
         .sheet(isPresented: Binding(
             get: { pickerFolder != nil },
@@ -110,17 +95,14 @@ struct ContentView: View {
                     folder: folder,
                     sessions: pickerSessions,
                     onPick: { id in
-                        terminals.open(folder: folder, command: "claude --resume \(id)")
+                        terminals.run("claude --resume \(id)", in: folder)
                         pickerFolder = nil
                     },
                     onMostRecent: {
-                        terminals.open(folder: folder, kinds: [.claude])
+                        terminals.run("claude --continue", in: folder)
                         pickerFolder = nil
                     },
-                    onCancel: {
-                        selected = nil
-                        pickerFolder = nil
-                    })
+                    onCancel: { pickerFolder = nil })
             }
         }
         .onChange(of: terminals.openOrder) { _, folders in
@@ -133,12 +115,35 @@ struct ContentView: View {
     }
 
     private func openFolders(_ folders: [String]) {
-        for folder in folders {
-            let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? [.claude]
-            terminals.open(folder: folder, kinds: kinds)
-        }
+        for folder in folders { terminals.open(folder: folder) }
         selected = folders.last
-        if folders.count > 1 { gridMode = true }   // tile a multi-session workspace
+        if folders.count > 1 {   // tile a multi-session workspace at a fitting density
+            gridColumns = folders.count <= 4 ? 2 : (folders.count <= 9 ? 3 : 4)
+        }
+    }
+
+    private func agentLabel(for folder: String) -> String {
+        let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
+        return terminals.agentLabel(for: kinds) ?? "claude"
+    }
+
+    /// One-touch resume: inject the resume command into the folder's shell.
+    /// If a folder has several Claude conversations, ask which first.
+    private func resumeAction(_ folder: String) {
+        let kinds = model.entries.first(where: { $0.folder == folder })?.kinds ?? []
+        if kinds.contains(.codex), !kinds.contains(.claude) {
+            terminals.run("codex resume --last", in: folder)
+            return
+        }
+        Task {
+            let sessions = await Task.detached { History.claudeSessions(inFolder: folder) }.value
+            if sessions.count > 1 {
+                pickerSessions = sessions
+                pickerFolder = folder
+            } else {
+                terminals.run("claude --continue", in: folder)
+            }
+        }
     }
 
     @ViewBuilder
@@ -166,15 +171,26 @@ struct ContentView: View {
         }
     }
 
+    private var placeholderView: some View {
+        ContentUnavailableView(
+            "Select a session",
+            systemImage: "terminal",
+            description: Text("Pick a project on the left to resume it in a terminal."))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     @ViewBuilder
-    private var detailBody: some View {
-        if let folder = selected, let controller = terminals.controller(for: folder) {
+    private var singleTerminalView: some View {
+        let focused = selected ?? terminals.openOrder.last
+        if let folder = focused, let controller = terminals.controller(for: folder) {
             VStack(spacing: 0) {
                 HStack {
                     Image(systemName: "folder")
                     Text(folder).font(.callout).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.head)
                     Spacer()
+                    Button("Resume \(agentLabel(for: folder))") { resumeAction(folder) }
+                        .help("Run the agent's resume command in this shell")
                     Button("Sleep") {
                         terminals.close(folder: folder)
                         openedWhileLive.remove(folder)
@@ -219,23 +235,16 @@ struct ContentView: View {
 
     private var detailControls: some View {
         HStack(spacing: 12) {
-            Picker("", selection: $gridMode) {
-                Text("Tabs").tag(false)
-                Text("Grid").tag(true)
+            Picker("", selection: $gridColumns) {
+                Text("Single").tag(1)
+                Text("2×2").tag(2)
+                Text("3×3").tag(3)
+                Text("4×4").tag(4)
             }
             .pickerStyle(.segmented)
-            .frame(width: 150)
+            .frame(width: 280)
             .labelsHidden()
-
-            if gridMode {
-                Picker("", selection: $gridColumns) {
-                    Text("2×2").tag(2)
-                    Text("3×3").tag(3)
-                    Text("4×4").tag(4)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 170)
-                .labelsHidden()
+            if !terminals.openOrder.isEmpty {
                 Text("\(terminals.openOrder.count) open")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -264,10 +273,12 @@ struct ContentView: View {
                         spacing: spacing
                     ) {
                         ForEach(terminals.openOrder, id: \.self) { folder in
-                            GridCell(folder: folder, terminals: terminals) {
-                                selected = folder
-                                gridMode = false
-                            }
+                            GridCell(
+                                folder: folder,
+                                terminals: terminals,
+                                agentLabel: agentLabel(for: folder),
+                                onFocus: { selected = folder; gridColumns = 1 },
+                                onResume: { resumeAction(folder) })
                             .frame(width: cellW, height: cellH)
                         }
                     }
@@ -406,13 +417,19 @@ struct ResumePicker: View {
 struct GridCell: View {
     let folder: String
     @ObservedObject var terminals: TerminalManager
+    let agentLabel: String
     let onFocus: () -> Void
+    let onResume: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text(terminals.folderName(folder)).font(.caption).lineLimit(1)
                 Spacer()
+                Button(action: onResume) {
+                    Image(systemName: "play.fill").font(.system(size: 9))
+                }
+                .buttonStyle(.plain).help("Resume \(agentLabel)")
                 Button(action: onFocus) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 9))
                 }
