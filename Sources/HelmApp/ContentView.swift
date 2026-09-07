@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var selected: String?   // selected session's folder
     @State private var showingSave = false
     @State private var newWorkspaceName = ""
+    @State private var gridMode = false
+    @State private var gridColumns = 2   // 2 = 2x2, 3 = 3x3, 4 = 4x4
     @State private var openedWhileLive: Set<String> = []   // was live elsewhere when opened
     @State private var pickerFolder: String?
     @State private var pickerSessions: [SessionRecord] = []
@@ -65,11 +67,17 @@ struct ContentView: View {
             }
         } detail: {
             VStack(spacing: 0) {
-                if !terminals.openOrder.isEmpty {
-                    TabStrip(terminals: terminals, selected: $selected)
-                    Divider()
+                detailControls
+                Divider()
+                if gridMode {
+                    gridView
+                } else {
+                    if !terminals.openOrder.isEmpty {
+                        TabStrip(terminals: terminals, selected: $selected)
+                        Divider()
+                    }
+                    detailBody
                 }
-                detailBody
             }
         }
         .onChange(of: selected) { _, newValue in
@@ -130,6 +138,7 @@ struct ContentView: View {
             terminals.open(folder: folder, kinds: kinds)
         }
         selected = folders.last
+        if folders.count > 1 { gridMode = true }   // tile a multi-session workspace
     }
 
     @ViewBuilder
@@ -205,6 +214,66 @@ struct ContentView: View {
                 "Select a session",
                 systemImage: "terminal",
                 description: Text("Pick a project on the left to resume it in a terminal."))
+        }
+    }
+
+    private var detailControls: some View {
+        HStack(spacing: 12) {
+            Picker("", selection: $gridMode) {
+                Text("Tabs").tag(false)
+                Text("Grid").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 150)
+            .labelsHidden()
+
+            if gridMode {
+                Picker("", selection: $gridColumns) {
+                    Text("2×2").tag(2)
+                    Text("3×3").tag(3)
+                    Text("4×4").tag(4)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 170)
+                .labelsHidden()
+                Text("\(terminals.openOrder.count) open")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(6)
+    }
+
+    @ViewBuilder
+    private var gridView: some View {
+        if terminals.openOrder.isEmpty {
+            ContentUnavailableView(
+                "No open sessions",
+                systemImage: "square.grid.2x2",
+                description: Text("Open sessions from the sidebar (or a workspace) to tile them here."))
+        } else {
+            GeometryReader { geo in
+                let cols = gridColumns
+                let rows = max(1, Int(ceil(Double(terminals.openOrder.count) / Double(cols))))
+                let spacing: CGFloat = 8
+                let cellW = (geo.size.width - spacing * CGFloat(cols + 1)) / CGFloat(cols)
+                let cellH = max(140, (geo.size.height - spacing * CGFloat(rows + 1)) / CGFloat(rows))
+                ScrollView {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.fixed(cellW), spacing: spacing), count: cols),
+                        spacing: spacing
+                    ) {
+                        ForEach(terminals.openOrder, id: \.self) { folder in
+                            GridCell(folder: folder, terminals: terminals) {
+                                selected = folder
+                                gridMode = false
+                            }
+                            .frame(width: cellW, height: cellH)
+                        }
+                    }
+                    .padding(spacing)
+                }
+            }
         }
     }
 
@@ -330,6 +399,39 @@ struct ResumePicker: View {
         if s < 3600 { return "\(max(1, s / 60))m ago" }
         if s < 86400 { return "\(s / 3600)h ago" }
         return "\(s / 86400)d ago"
+    }
+}
+
+/// One tile in the grid: a live libghostty terminal with a compact header.
+struct GridCell: View {
+    let folder: String
+    @ObservedObject var terminals: TerminalManager
+    let onFocus: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text(terminals.folderName(folder)).font(.caption).lineLimit(1)
+                Spacer()
+                Button(action: onFocus) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 9))
+                }
+                .buttonStyle(.plain).help("Focus this session")
+                Button { terminals.close(folder: folder) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9))
+                }
+                .buttonStyle(.plain).help("Sleep this terminal")
+            }
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(Color.secondary.opacity(0.12))
+            if let controller = terminals.controller(for: folder) {
+                TerminiTerminalView(controller: controller, appearance: .default)
+            } else {
+                Color.black
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
     }
 }
 
