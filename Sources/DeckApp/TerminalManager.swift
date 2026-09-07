@@ -77,10 +77,19 @@ final class TerminalManager: ObservableObject {
         let dir = readable ? URL(fileURLWithPath: folder) : fm.homeDirectoryForCurrentUser
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
+        // Give the shell a clean environment, like a fresh Terminal window. In
+        // particular strip Claude Code's own markers (CLAUDECODE,
+        // CLAUDE_CODE_*), which include CLAUDE_CODE_CHILD_SESSION. If they leak
+        // in, a `claude` started here thinks it is a nested child and skips
+        // writing its transcript, so the chat never shows up in --resume.
+        let env = ProcessInfo.processInfo.environment.filter {
+            $0.key != "CLAUDECODE" && !$0.key.hasPrefix("CLAUDE_CODE_")
+        }
+
         let spec = TerminiProcessSpec(
             executableURL: URL(fileURLWithPath: shell),
             arguments: ["-l"],
-            environment: ProcessInfo.processInfo.environment,
+            environment: env,
             workingDirectoryURL: dir)
 
         let session = TerminalSession(spec: spec)
