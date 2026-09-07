@@ -1,11 +1,15 @@
 import SwiftUI
+import AppKit
 import SessionEngine
 import Termini
 
 struct ContentView: View {
-    @StateObject private var model = SessionListModel()
-    @StateObject private var terminals = TerminalManager()
+    @ObservedObject private var model = SessionListModel.shared
+    @ObservedObject private var terminals = TerminalManager.shared
     @StateObject private var store = WorkspaceStore()
+    @StateObject private var notch = NotchController()
+    @AppStorage("deck.notch") private var notchEnabled = true
+    @AppStorage("deck.notchEdge") private var notchEdge = "top"
     @State private var selected: String?   // selected session's folder
     @State private var showingSave = false
     @State private var newWorkspaceName = ""
@@ -147,9 +151,18 @@ struct ContentView: View {
             await model.refresh()
             if restoreLast, !store.lastOpen.isEmpty { openFolders(store.lastOpen) }
             model.startAutoRefresh(every: refreshSeconds)
+            notch.update(enabled: notchEnabled, edge: notchEdge)
         }
         .onChange(of: refreshSeconds) { _, s in model.startAutoRefresh(every: s) }
         .onChange(of: idleMB) { _, v in model.idleThresholdMB = v }
+        .onChange(of: notchEnabled) { _, _ in notch.update(enabled: notchEnabled, edge: notchEdge) }
+        .onChange(of: notchEdge) { _, _ in notch.update(enabled: notchEnabled, edge: notchEdge) }
+        .onChange(of: terminals.requestedFolder) { _, folder in
+            guard let folder else { return }
+            selected = folder
+            terminals.requestedFolder = nil
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     private func openFolders(_ folders: [String]) {

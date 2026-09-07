@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage("deck.chime") private var chime = true
     @AppStorage("deck.notify") private var notify = true
     @AppStorage("deck.chimeSound") private var chimeSound = "Beep"
+    @AppStorage("deck.notch") private var notch = true
+    @AppStorage("deck.notchEdge") private var notchEdge = "top"
 
     var body: some View {
         TabView {
@@ -23,8 +25,25 @@ struct SettingsView: View {
             behaviourTab.tabItem { Label("Behaviour", systemImage: "slider.horizontal.3") }
             agentsTab.tabItem { Label("Agents", systemImage: "terminal") }
             chimeTab.tabItem { Label("Chime", systemImage: "bell") }
+            notchTab.tabItem { Label("Notch", systemImage: "menubar.rectangle") }
         }
         .frame(width: 480, height: 300)
+    }
+
+    private var notchTab: some View {
+        Form {
+            Toggle("Show the side notch", isOn: $notch)
+            Picker("Pin to", selection: $notchEdge) {
+                Text("Top").tag("top")
+                Text("Right").tag("right")
+                Text("Bottom").tag("bottom")
+            }
+            .pickerStyle(.segmented)
+            .disabled(!notch)
+            Text("A small always-on pill showing your fleet: it turns amber and names any session waiting on you. Click a name to jump to it.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(20)
     }
 
     private var chimeTab: some View {

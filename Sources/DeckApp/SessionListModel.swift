@@ -6,6 +6,8 @@ import SessionEngine
 /// poll on a timer.
 @MainActor
 final class SessionListModel: ObservableObject {
+    static let shared = SessionListModel()
+
     @Published var entries: [HistoryEntry] = []
     @Published var liveAgents: [LiveAgent] = []
     @Published var servers: [DevServer] = []

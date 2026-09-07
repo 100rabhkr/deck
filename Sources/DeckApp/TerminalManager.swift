@@ -9,10 +9,14 @@ import SessionEngine
 /// session that is not the one you are looking at.
 @MainActor
 final class TerminalManager: ObservableObject {
+    static let shared = TerminalManager()
+
     @Published private(set) var openOrder: [String] = []
     @Published private(set) var noAccess: Set<String> = []
     /// Folders whose session rang the bell while in the background.
     @Published private(set) var attention: Set<String> = []
+    /// Set by the notch to ask the main window to select and front a folder.
+    @Published var requestedFolder: String?
     private var sessions: [String: TerminalSession] = [:]
     private var focusedFolder: String?
 
