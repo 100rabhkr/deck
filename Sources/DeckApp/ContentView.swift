@@ -51,6 +51,14 @@ struct ContentView: View {
             .navigationTitle("Deck")
             .frame(minWidth: 260)
             .toolbar {
+                ToolbarItem {
+                    Button {
+                        pickFolderAndOpen()
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                    }
+                    .help("Open a terminal in any folder")
+                }
                 if model.idleCount > 0 {
                     ToolbarItem {
                         Button {
@@ -158,6 +166,20 @@ struct ContentView: View {
             selected = folder
             terminals.requestedFolder = nil
             NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func pickFolderAndOpen() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Open Terminal"
+        panel.message = "Choose a folder to open a terminal in"
+        if panel.runModal() == .OK, let url = panel.url {
+            terminals.open(folder: url.path)
+            selected = url.path
+            gridColumns = 1
         }
     }
 
