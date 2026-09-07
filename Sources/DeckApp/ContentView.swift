@@ -62,18 +62,6 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItem {
-                    Menu {
-                        Button("Default") { themeName = "" }
-                        Divider()
-                        ForEach(TerminiTerminalTheme.presets) { theme in
-                            Button(theme.name) { themeName = theme.name }
-                        }
-                    } label: {
-                        Image(systemName: "paintpalette")
-                    }
-                    .help("Terminal theme")
-                }
-                ToolbarItem {
                     Button {
                         newWorkspaceName = ""
                         showingSave = true
@@ -93,7 +81,9 @@ struct ContentView: View {
                     .help("Refresh now")
                 }
                 ToolbarItem {
-                    SettingsLink {
+                    Button {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    } label: {
                         Image(systemName: "gearshape")
                     }
                     .help("Settings (⌘,)")

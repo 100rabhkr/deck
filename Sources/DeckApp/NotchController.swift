@@ -26,6 +26,7 @@ final class NotchController: ObservableObject {
         p.level = .statusBar
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         p.isFloatingPanel = true
+        p.acceptsMouseMovedEvents = true   // so SwiftUI onHover fires
         p.hidesOnDeactivate = false
         p.backgroundColor = .clear
         p.isOpaque = false
