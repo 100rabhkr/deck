@@ -505,7 +505,10 @@ struct GridCell: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 if hasAttention {
-                    Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                    Button { terminals.clearAttention(folder) } label: {
+                        Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain).help("Dismiss alert")
                 }
                 Text(terminals.folderName(folder)).font(.caption).lineLimit(1)
                 Spacer()
@@ -549,7 +552,10 @@ struct TabStrip: View {
                 ForEach(terminals.openOrder, id: \.self) { folder in
                     HStack(spacing: 6) {
                         if terminals.attention.contains(folder) {
-                            Image(systemName: "bell.fill").font(.system(size: 8)).foregroundStyle(.orange)
+                            Button { terminals.clearAttention(folder) } label: {
+                                Image(systemName: "bell.fill").font(.system(size: 8)).foregroundStyle(.orange)
+                            }
+                            .buttonStyle(.plain).help("Dismiss alert")
                         }
                         Text(terminals.folderName(folder)).lineLimit(1)
                         Button {

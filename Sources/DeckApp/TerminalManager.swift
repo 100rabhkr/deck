@@ -51,6 +51,9 @@ final class TerminalManager: ObservableObject {
         if let folder { attention.remove(folder) }
     }
 
+    /// Dismiss a session's attention alert without switching to it.
+    func clearAttention(_ folder: String) { attention.remove(folder) }
+
     func folderName(_ folder: String) -> String { (folder as NSString).lastPathComponent }
 
     func agentLabel(for kinds: [AgentKind]) -> String? {
